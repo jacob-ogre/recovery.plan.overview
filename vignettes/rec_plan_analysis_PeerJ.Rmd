@@ -1,0 +1,460 @@
+---
+title: "Missing, delayed, and old: A status review of ESA recovery plans"
+author: "Jacob Malcom, Defenders of Wildlife"
+output: 
+  html_document:
+    highlight: tango
+    fig_caption: yes
+    fig_width: 7
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+# Reference
+
+This vignette accompanies a manuscript we will post to _PeerJ Preprints_ and submit to _PeerJ_. The preprint can be found [here](#).
+
+----
+
+# Abstract
+
+Recovery planning is an essential part of implementing the U.S. Endangered Species Act (ESA), but conservationists and government agencies recognize there are problems with the process. A common perception is that too many species lack recovery plans, these plans take too long to write, and plans are rarely updated to include new information. Using data from all U.S. domestic and transboundary ESA-listed species--those species we expect should have recovery plans--we quantify basic characteristics of ESA recovery planning. We show that ~1/4 of these listed species lack recovery plans; the average recovery plan has taken >5 years to be developed after listing; and half of recovery plans are 19 or more years old. These results are not unexpected given dwindling budgets and more species to protect, but they underscore the need for systematic improvements to recovery planning. We discuss how many of the shortcomings we identify here can be ameliorated, at least in part, by transitioning to modern, web-based recovery plans. 
+
+----
+
+```{r setup, message = FALSE}
+library(ecosscraper)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(knitr)
+library(lubridate)
+library(plotly)
+library(recovery.plan.overview)
+library(stringr)
+library(viridis)
+
+data("recovery_plan_table")
+data("species_info_table")
+data("ecos_all_spp")
+data("nmfs_man")
+```
+
+# Data prep
+
+```{r prep_data, message = FALSE}
+###########################################################################
+# load and prep the data
+#
+# First, fix some errors from ECOS
+recovery_plan_table$Date <- ifelse(recovery_plan_table$Title == "Final Recovery Plan for Johnson's Seagrass",
+                                   "2002-09-15",
+                                   recovery_plan_table$Date)
+recovery_plan_table$Date <- ifelse(recovery_plan_table$Title == "White Abalone Recovery Plan",
+                                   "2008-10-10",
+                                   recovery_plan_table$Date)
+recovery_plan_table$Date <- as_date(recovery_plan_table$Date)
+
+# Add manually curated data from NMFS
+combo <- rbind(recovery_plan_table, nmfs_man)
+
+# Next, the join with the 'big' ECOS species table to get original listing dates
+names(combo)[1] <- "Rec_Plan_Date"
+names(combo)[4] <- "Plan_Status"
+recplan_spp <- left_join(combo, ecos_all_spp, by = c("Species" = "Scientific_Name"))
+recplan_spp <- filter(recplan_spp, US_Foreign %in% c("US", "US/Foreign"))
+recplan_spp <- filter(recplan_spp, 
+                      Federal_Listing_Status %in% c("Endangered", "Threatened"))
+recplan_spp <- select(recplan_spp, Rec_Plan_Date, Title, Plan_Status, 
+                      Species, Common_Name, Federal_Listing_Status, Lead_Region, 
+                      First_Listed, Species_Group, US_Foreign, Where_Listed)
+recplan_spp <- distinct(recplan_spp, Species, Where_Listed, .keep_all = TRUE)
+recplan_spp$Elapsed <- as.numeric(
+  recplan_spp$Rec_Plan_Date - recplan_spp$First_Listed
+)
+recplan_spp$Elapsed_Years <- recplan_spp$Elapsed / 365
+
+# Looks like I'm missing records for ~50 species compared to what the BoxScore
+# provides (http://ecos.fws.gov/ecp0/reports/box-score-report)...wait, no, the
+# footnote on that page says "active plans," so both draft and final.
+#
+# NOTE that final_plans has to be just the plans with Final status for 
+# calculating the times-to-plan values
+final_plans <- filter(recplan_spp, recplan_spp$Plan_Status == "Final")
+with_plan <- filter(recplan_spp, 
+                    grepl(recplan_spp$Plan_Status, pattern="Final|Revision"))
+draft <- filter(recplan_spp, recplan_spp$Plan_Status == "Draft")
+other <- filter(recplan_spp,
+                grepl(recplan_spp$Plan_Status, 
+                      pattern="Outline|Strategy"))
+
+###############
+# Also need the complement of the previous, a data.frame of listed species,
+# with NAs for listed species lacking plans. Note that the 1593 I get here is 
+# the same as what BoxScore indicates today.
+listed <- filter(ecos_all_spp, 
+                 Federal_Listing_Status %in% c("Endangered", "Threatened"))
+listed <- filter(listed, US_Foreign %in% c("US", "US/Foreign"))
+
+listed <- left_join(listed, combo, by = c("Scientific_Name" = "Species"))
+listed <- distinct(listed, Scientific_Name, Where_Listed, .keep_all = TRUE)
+listed$Year_Listed <- year(listed$First_Listed)
+listed$Year_Plan <- year(listed$Rec_Plan_Date)
+
+###############
+# Need the set of species exempt from recovery planning
+exempt_spp <- c(
+  "Vermivora bachmanii",
+  "Stygobromus hayi",
+  "Palaemonetes cummingi",
+  "Noturus trautmani", 
+  "Oncorhynchus aguabonita whitei",
+  "Ribes echinellum", # two pops, N-FL & SC; reason for exemption unclear
+  "Pritchardia aylmer-robinsonii", # cultivated plant, private island
+  "Herpailurus (=Felis) yagouaroundi tolteca"
+)
+listed <- dplyr::filter(listed, !(Scientific_Name %in% exempt_spp))
+
+# We also want to see what's happened with time-to-plan through time,
+# and want to calculate a "minimum" date at which final plans might exist.
+# We replace any NA or date for species without a final or revised plan
+# with 15 Sep 2016 as a placeholder. Also need to NA green sea turtle because
+# the plan was done in 1999, but the species was split into 6 DPSs in 2016
+listed$Min_Date_noFinal <- rep(NA, length(listed$Scientific_Name))
+for(i in 1:length(listed$Min_Date_noFinal)) {
+  if(is.na(listed$Rec_Plan_Date[i])) {
+    listed$Min_Date_noFinal[i] <- as.Date("2016-09-15", origin = "1970-01-01")
+  } else if(grepl(listed$Scientific_Name[i], pattern = "Chelonia mydas")) {
+    listed$Min_Date_noFinal[i] <- NA
+  } else if(grepl(listed$Plan_Status[i], pattern = "Final|Revision")) {
+    listed$Min_Date_noFinal[i] <- as.Date(listed$Rec_Plan_Date[i])
+  } else {
+    listed$Min_Date_noFinal[i] <- as.Date("2016-09-15", origin = "1970-01-01")
+  }
+}
+listed$Min_Date_noFinal <- as.Date(listed$Min_Date_noFinal, origin = "1970-01-01")
+listed$Age_Min_Age <- as.numeric(listed$Min_Date_noFinal - listed$First_Listed)
+# hist(listed$Age_Min_Age)
+
+no_plan <- filter(listed, is.na(listed$Year_Plan))
+```
+
+# Analyses
+
+## Summary statistics
+
+```{r summary_stats}
+# We exclude green sea turtles because they were re-listed as several DPSs
+# in 2016 and their plan was approved in 1999...a 16+ year negative value for
+# time-to-plan is biased in a very unusual way
+final_plans_bak <- final_plans
+final_plans <- dplyr::filter(final_plans, 
+                             !grepl(final_plans$Species, pattern="Chelonia mydas"))
+
+delta_tmp <- c(n = length(final_plans$Elapsed_Years),
+               min = round(min(final_plans$Elapsed_Years, na.rm = TRUE), 1),
+               median = round(median(final_plans$Elapsed_Years, na.rm = TRUE), 1),
+               mean = round(mean(final_plans$Elapsed_Years, na.rm = TRUE), 1),
+               max = round(max(final_plans$Elapsed_Years, na.rm = TRUE)))
+listd_tmp <- c(n = length(final_plans$First_Listed ),
+               min = as.character(min(final_plans$First_Listed, na.rm = TRUE)),
+               median = as.character(median(final_plans$First_Listed, na.rm = TRUE)),
+               mean = as.character(mean(final_plans$First_Listed, na.rm = TRUE)),
+               max = as.character(max(final_plans$First_Listed, na.rm = TRUE)))
+pland_tmp <- c(n = length(final_plans$Rec_Plan_Date),
+               min = as.character(min(final_plans$Rec_Plan_Date, na.rm = TRUE)),
+               median = as.character(median(final_plans$Rec_Plan_Date, na.rm = TRUE)),
+               mean = as.character(mean(final_plans$Rec_Plan_Date, na.rm = TRUE)),
+               max = as.character(max(final_plans$Rec_Plan_Date, na.rm = TRUE)))
+draft_tmp <- c(n = length(draft$Rec_Plan_Date),
+               min = as.character(min(draft$Rec_Plan_Date, na.rm = TRUE)),
+               median = as.character(median(draft$Rec_Plan_Date, na.rm = TRUE)),
+               mean = as.character(mean(draft$Rec_Plan_Date, na.rm = TRUE)),
+               max = as.character(max(draft$Rec_Plan_Date, na.rm = TRUE)))
+draft_del <- c(n = length(draft$Elapsed_Years),
+               min = round(min(draft$Elapsed_Years, na.rm = TRUE), 1),
+               median = round(median(draft$Elapsed_Years, na.rm = TRUE), 1),
+               mean = round(mean(draft$Elapsed_Years, na.rm = TRUE), 1),
+               max = round(max(draft$Elapsed_Years, na.rm = TRUE)))
+other_tmp <- c(n = length(other$Rec_Plan_Date),
+               min = as.character(min(other$Rec_Plan_Date, na.rm = TRUE)),
+               median = as.character(median(other$Rec_Plan_Date, na.rm = TRUE)),
+               mean = as.character(mean(other$Rec_Plan_Date, na.rm = TRUE)),
+               max = as.character(max(other$Rec_Plan_Date, na.rm = TRUE)))
+other_del <- c(n = length(other$Elapsed_Years),
+               min = round(min(other$Elapsed_Years, na.rm = TRUE), 1),
+               median = round(median(other$Elapsed_Years, na.rm = TRUE), 1),
+               mean = round(mean(other$Elapsed_Years, na.rm = TRUE), 1),
+               max = round(max(other$Elapsed_Years, na.rm = TRUE)))
+placehold <- c(" ", " ", " ", " ", " ")
+to_show_df <- rbind(placehold, listd_tmp, pland_tmp, delta_tmp, placehold, 
+                    draft_tmp, draft_del, placehold, other_tmp, other_del)
+row.names(to_show_df) <- c("Final Plans", "Listed Date", "Plan Date", 
+                           "Years Elapsed", "Draft Plans", "Draft Date",
+                           "Draft Elapsed", "Other Types", "Other Date",
+                           "Other Elapsed")
+
+kable(to_show_df,
+      caption = "Summary statistics of time between listing and final recovery plan. Min, median, mean, and max are given in days.",
+      digits = 1,
+      align = "c")
+# write.table(data.frame(to_show_df), 
+#             file = "vignettes/summary_stats.tsv",
+#             row.names = TRUE,
+#             sep = "\t",
+#             quote = FALSE)
+```
+
+## Plans by region and agency
+
+```{r tab_region, echo = TRUE, warning = FALSE}
+mat <- as.matrix(table(listed$Lead_Region, is.na(listed$Year_Plan)))
+res <- data.frame(Region_Agency = row.names(mat),
+                  With_Plans = mat[, 1],
+                  Without_Plans = mat[, 2],
+                  Prop_Plans = mat[, 1] / (mat[,1] + mat[,2]))
+row.names(res) <- NULL
+kable(res, 
+      caption = "Distribution of plans among FWS regions and NMFS.", 
+      align = "c",
+      digits = 3)
+```
+
+```{r lm_region, echo = TRUE}
+mod <- lm(final_plans$Elapsed_Years ~ final_plans$Lead_Region)
+summary(mod)
+anova(mod)
+```
+
+# Figures
+
+## Figure 1a: Number of species listed, with/out plans
+
+```{r figure_1a, message = FALSE}
+year <- seq(min(listed$Year_Listed, na.rm = TRUE),
+             max(listed$Year_Listed, na.rm = TRUE))
+n_listed <- unlist(
+              lapply(year, 
+                FUN = function(x) {
+                  sum(listed$Year_Listed <= x,  na.rm = TRUE)
+                }
+              )
+            )
+n_plans <- unlist(lapply(year, 
+               FUN = function(x) {
+                 sum(listed$Year_Plan <= x & 
+                     grepl(listed$Plan_Status, pattern = "Final|Revision"), 
+                                               na.rm = TRUE)
+               }
+             )
+           )
+n_list_df <- data.frame(year, n_listed, n_plans)
+n_list_df$n_no_plan <- n_list_df$n_listed - n_list_df$n_plans
+
+plt <- ggplot(n_list_df, aes(y = n_listed, x = year)) +
+  geom_line() +
+  geom_line(aes(y = n_no_plan, x = year),
+            colour = "gray70",
+            size = 2) +
+  geom_line(aes(y = n_plans, x = year), 
+            colour = "gray70",
+            linetype = "dashed") +
+  labs(x = "", y = "Count") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+ggplotly(plt)
+```
+
+## Figure 1b: Plans/species with plans through time
+
+```{r figure_1b, message = FALSE}
+n_listed <- unlist(lapply(year, 
+                          function(x) sum(listed$Year_Listed == x, na.rm = TRUE)))
+n_w_plans <- unlist(lapply(year, 
+                         function(x) {
+                           sub <- filter(listed, Year_Listed == x)
+                           sum(!is.na(sub$Year_Plan))
+                         }))
+n_species <- unlist(lapply(year, 
+                         function(x) {
+                           sub <- filter(listed, Year_Plan == x)
+                           length(unique(sub$Scientific_Name))
+                         }))
+n_plans <- unlist(lapply(year, 
+                         function(x) {
+                           sub <- filter(listed, Year_Plan == x)
+                           length(unique(sub$Title))
+                         }))
+n_list_df <- data.frame(year, n_listed, n_w_plans, n_species, n_plans)
+n_list_df$pct_w_plan <- n_list_df$n_w_plans / n_list_df$n_listed
+
+plt <- ggplot(n_list_df, aes(y = n_plans, x = year)) +
+  geom_line(colour = "gray70") +
+  geom_line(aes(y = n_species, x = year)) +
+  labs(x = "Year",
+       y = "Count") +
+  theme_hc() +
+  theme(text = element_text(family = "Open Sans"))
+ggplotly(plt)
+
+```
+
+## Figure 2: Proportion with plans by listing year
+
+```{r figure_2, message = FALSE}
+plt <- ggplot(n_list_df, aes(y = pct_w_plan, x = year)) +
+  geom_point(size = 3, alpha = 0.5) +
+  geom_smooth(level = 0.9, alpha = 0, colour = "black") +
+  scale_y_continuous(limits = c(0,1)) +
+  labs(x = "Year ESA-listed",
+       y = "Proportion of species with plans") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+ggplotly(plt)
+```
+
+## Figure 3a: Times-to-plan (histogram)
+
+```{r figure_3a, message = FALSE}
+qplot(final_plans$Elapsed_Years, geom = "histogram") +
+      labs(x = "Time between date listed and recovery plan date (years)",
+           y = "Number of species") +
+      theme_hc() +
+      theme(plot.title=element_text(hjust = 0, size = 18),
+            text = element_text(family = "Open Sans"))
+```
+
+## Figure 3b: Times-to-plan (percentile)
+
+```{r figure_3b, message = FALSE}
+duration <- sort(final_plans$Elapsed_Years, decreasing = FALSE)
+order <- seq(1:length(duration))
+percentile <- order / max(order)
+pctile <- data.frame(duration, order, percentile, stringsAsFactors = FALSE)
+
+plt <- ggplot(pctile, aes(y = duration, x = percentile)) +
+  geom_line() +
+  labs(x = "Percentile",
+       y = "Time-to-recovery plan (years)\n") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans")) 
+ggplotly(plt) %>% layout(font = list(family = "Open Sans"))
+```
+
+## Figure 4: Times-to-plan through time
+
+```{r figure_4, message = FALSE}
+tmp <- final_plans
+tmp$Year_Listed <- year(tmp$First_Listed)
+tmp$Year_Plan <- year(tmp$Rec_Plan_Date)
+years <- seq(min(tmp$Year_Listed, na.rm = TRUE),
+             max(tmp$Year_Listed, na.rm = TRUE))
+
+cur_fx <- function(df, x, fn) {
+  sub_df <- filter(df, Year_Listed == x)
+  if(dim(sub_df)[1] == 0) return(NA)
+  switch(fn,
+         mean = mean(sub_df$Elapsed_Years, na.rm = TRUE),
+         min = min(sub_df$Elapsed_Years, na.rm = TRUE),
+         max = max(sub_df$Elapsed_Years, na.rm = TRUE)
+  )
+}
+
+# This is to calculate a potential "minimum time-to-plan" for species 
+# that do not have final plans or final plans in revision. However, 
+# the results aren't particularly informative and are not included in
+# the paper or the figure below.
+get_potential <- function(df, x) {
+  sub_df <- filter(df, Year_Listed == x)
+  if(dim(sub_df)[1] == 0) return(NA)
+  mean = mean(sub_df$Age_Min_Age, na.rm = TRUE)
+  return(mean / 365)
+}
+
+n_plans <- unlist(lapply(years, function(x) {length(filter(tmp, Year_Plan == x)[[1]])} ))
+tm_mean <- unlist(lapply(years, cur_fx, df = tmp, fn = "mean"))
+tm_min <- unlist(lapply(years, cur_fx, df = tmp, fn = "min"))
+tm_max <- unlist(lapply(years, cur_fx, df = tmp, fn = "max"))
+potential_age <- unlist(lapply(years, get_potential, df = listed))
+dat <- data.frame(years, tm_mean, tm_min, tm_max, potential_age, n_plans)
+names(dat) <- c("Year", "Mean", "Min", "Max", "Potential", "N_plans")
+
+plt <- ggplot(dat, aes(y = Mean, x = Year)) +
+  geom_line() +
+  geom_line(aes(y = Min, x = Year), colour = "gray70") +
+  geom_line(aes(y = Max, x = Year), colour = "gray70") +
+  # geom_line(aes(y = Potential, x = Year), colour = "red") +
+  labs(x = "Year of Listing",
+       y = "Time-to-plan (years)\n") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+ggplotly(plt) %>% layout(font = list(family = "Open Sans"))
+```
+
+Including one analysis here because the data frame is built in the chunk above:
+
+```{r time_plan_lm}
+# Subset to > 1978 because plans were not required before then...
+mod <- lm(Elapsed_Years ~ Year_Listed, data = filter(tmp, Year_Listed > 1978))
+summary(mod)
+```
+
+## Figure 5a: Plan ages
+
+```{r figure_5a, message = FALSE}
+with_plan$Current_Age <- as.numeric(Sys.Date() - with_plan$Rec_Plan_Date) / 365
+
+qplot(with_plan$Current_Age, geom = "histogram") +
+      labs(x = "Plan age (years)",
+           y = "Number of species") +
+      theme_hc() +
+      theme(plot.title=element_text(hjust = 0, size = 18),
+            text = element_text(family = "Open Sans"))
+```
+
+## Figure 5b: Species' plan age (pctile)
+
+```{r figure_5b, message = FALSE}
+age <- sort(with_plan$Current_Age, decreasing = FALSE)
+order <- seq(1:length(age))
+percentile <- order / max(order)
+pctile <- data.frame(age, order, percentile, stringsAsFactors = FALSE)
+
+gg <- ggplot(pctile, aes(y = age, x = percentile)) +
+        geom_line() +
+        labs(x = "Percentile",
+             y = "Plan age (years)\n") +
+        theme_hc() + 
+        theme(text = element_text(family = "Open Sans"))
+ggplotly(gg) %>% layout(font = list(family = "Open Sans"))
+```
+
+## Figure 5c: Plan age (percentile)
+
+```{r figure_5c, message = FALSE}
+tmp <- distinct(with_plan, Title, .keep_all = TRUE)
+age <- sort(tmp$Current_Age, decreasing = FALSE)
+order <- seq(1:length(age))
+percentile <- order / max(order)
+pctile <- data.frame(age, order, percentile, stringsAsFactors = FALSE)
+
+gg <- ggplot(pctile, aes(y = age, x = percentile)) +
+        geom_line() +
+        labs(x = "Percentile",
+             y = "Plan age (years)\n") +
+        theme_hc() + 
+        theme(text = element_text(family = "Open Sans"))
+ggplotly(gg) %>% layout(font = list(family = "Open Sans"))
+```
+
+## Figure 6: Time-to-plan by region/agency
+
+```{r figure_6, warning = TRUE}
+ggplot(final_plans, aes(y = Elapsed_Years, x = Lead_Region)) +
+  geom_violin(fill = "gray", alpha = 0.5, colour = NA) +
+  geom_boxplot(colour = "gray20", fill = NA) +
+  labs(x = "FWS Region / NMFS", y = "Time-to-Plan (years)") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+```
