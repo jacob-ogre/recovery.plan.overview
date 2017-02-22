@@ -1,3 +1,35 @@
+p {
+  font-size: larger;
+  font-family: "Open Sans";
+  font-weight: 300;
+}
+
+h1 {
+  font-size: 30px;
+  font-family: "Garamond";
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 24px;
+  font-family: "Garamond";
+  font-weight: 500;
+}
+
+.tocify {
+  border-radius: 2px;
+  font-size: large;
+  font-family: "Garamond";
+  font-weight: 500;
+}
+
+.list-group-item.active,
+.list-group-item.active:focus,
+.list-group-item.active:hover {
+  background-color: #0E3670;
+  border-color: #0E3670;
+}
+
 .header-panel {
   background-color: #2d2d86;
     height: 144px;
