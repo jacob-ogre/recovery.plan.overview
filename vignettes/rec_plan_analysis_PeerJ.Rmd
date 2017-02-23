@@ -3,13 +3,15 @@ title: "Missing, delayed, and old: A status review of ESA recovery plans"
 author: "Jacob Malcom, Defenders of Wildlife"
 output: 
   html_document:
-    highlight: tango
+    code_folding: hide
+    css: custom.css
+    df_print: kable
     fig_caption: yes
     fig_width: 7
+    highlight: tango
     toc: true
     toc_depth: 2
     toc_float: true
-    css: custom.css
 ---
 
 # Reference
@@ -331,17 +333,22 @@ plt <- ggplot(n_list_df, aes(y = pct_w_plan, x = year)) +
   theme_hc() + 
   theme(text = element_text(family = "Open Sans"))
 ggplotly(plt)
+
+# ggsave("inst/figures/Fig2.pdf", plot = plt)
 ```
 
 ## Figure 3a: Times-to-plan (histogram)
 
 ```{r figure_3a, message = FALSE}
-qplot(final_plans$Elapsed_Years, geom = "histogram") +
-      labs(x = "Time between date listed and recovery plan date (years)",
-           y = "Number of species") +
-      theme_hc() +
-      theme(plot.title=element_text(hjust = 0, size = 18),
-            text = element_text(family = "Open Sans"))
+plt <- qplot(final_plans$Elapsed_Years, geom = "histogram") +
+  labs(x = "Time between date listed and recovery plan date (years)",
+       y = "Number of species") +
+  theme_hc() +
+  theme(plot.title=element_text(hjust = 0, size = 18),
+        text = element_text(family = "Open Sans"))
+plt
+
+# ggsave("inst/figures/Fig3a.pdf", plot = plt)
 ```
 
 ## Figure 3b: Times-to-plan (percentile)
@@ -359,6 +366,8 @@ plt <- ggplot(pctile, aes(y = duration, x = percentile)) +
   theme_hc() + 
   theme(text = element_text(family = "Open Sans")) 
 ggplotly(plt) %>% layout(font = list(family = "Open Sans"))
+
+# ggsave("inst/figures/Fig3b.pdf", plot = plt)
 ```
 
 ## Figure 4: Times-to-plan through time
@@ -380,24 +389,26 @@ cur_fx <- function(df, x, fn) {
   )
 }
 
-# This is to calculate a potential "minimum time-to-plan" for species 
-# that do not have final plans or final plans in revision. However, 
-# the results aren't particularly informative and are not included in
-# the paper or the figure below.
-get_potential <- function(df, x) {
-  sub_df <- filter(df, Year_Listed == x)
-  if(dim(sub_df)[1] == 0) return(NA)
-  mean = mean(sub_df$Age_Min_Age, na.rm = TRUE)
-  return(mean / 365)
-}
+# # This is to calculate a potential "minimum time-to-plan" for species 
+# # that do not have final plans or final plans in revision. However, 
+# # the results aren't particularly informative and are not included in
+# # the paper or the figure below.
+# get_potential <- function(x, df) {
+#   sub_df <- filter(df, Year_Listed == x)
+#   if(dim(sub_df)[1] == 0) return(NA)
+#   mean = mean(sub_df$Age_Min_Age, na.rm = TRUE)
+#   return(mean / 365)
+# }
 
 n_plans <- unlist(lapply(years, function(x) {length(filter(tmp, Year_Plan == x)[[1]])} ))
 tm_mean <- unlist(lapply(years, cur_fx, df = tmp, fn = "mean"))
 tm_min <- unlist(lapply(years, cur_fx, df = tmp, fn = "min"))
 tm_max <- unlist(lapply(years, cur_fx, df = tmp, fn = "max"))
-potential_age <- unlist(lapply(years, get_potential, df = listed))
-dat <- data.frame(years, tm_mean, tm_min, tm_max, potential_age, n_plans)
-names(dat) <- c("Year", "Mean", "Min", "Max", "Potential", "N_plans")
+# potential_age <- unlist(lapply(years, get_potential, df = listed))
+dat <- data.frame(years, tm_mean, tm_min, tm_max, # potential_age, 
+                  n_plans)
+names(dat) <- c("Year", "Mean", "Min", "Max", #"Potential", 
+                "N_plans")
 
 plt <- ggplot(dat, aes(y = Mean, x = Year)) +
   geom_line() +
@@ -409,6 +420,8 @@ plt <- ggplot(dat, aes(y = Mean, x = Year)) +
   theme_hc() + 
   theme(text = element_text(family = "Open Sans"))
 ggplotly(plt) %>% layout(font = list(family = "Open Sans"))
+
+# ggsave("inst/figures/Fig4.pdf", plot = plt)
 ```
 
 Including one analysis here because the data frame is built in the chunk above:
@@ -424,12 +437,15 @@ summary(mod)
 ```{r figure_5a, message = FALSE}
 with_plan$Current_Age <- as.numeric(Sys.Date() - with_plan$Rec_Plan_Date) / 365
 
-qplot(with_plan$Current_Age, geom = "histogram") +
-      labs(x = "Plan age (years)",
-           y = "Number of species") +
-      theme_hc() +
-      theme(plot.title=element_text(hjust = 0, size = 18),
-            text = element_text(family = "Open Sans"))
+plt <- qplot(with_plan$Current_Age, geom = "histogram") +
+  labs(x = "Plan age (years)",
+       y = "Number of species") +
+  theme_hc() +
+  theme(plot.title=element_text(hjust = 0, size = 18),
+        text = element_text(family = "Open Sans"))
+plt
+
+# ggsave("inst/figures/Fig5a.pdf", plot = plt)
 ```
 
 ## Figure 5b: Species' plan age (pctile)
@@ -447,6 +463,8 @@ gg <- ggplot(pctile, aes(y = age, x = percentile)) +
         theme_hc() + 
         theme(text = element_text(family = "Open Sans"))
 ggplotly(gg) %>% layout(font = list(family = "Open Sans"))
+
+# ggsave("inst/figures/Fig5b.pdf", plot = gg)
 ```
 
 ## Figure 5c: Plan age (percentile)
@@ -465,15 +483,52 @@ gg <- ggplot(pctile, aes(y = age, x = percentile)) +
         theme_hc() + 
         theme(text = element_text(family = "Open Sans"))
 ggplotly(gg) %>% layout(font = list(family = "Open Sans"))
+
+# ggsave("inst/figures/Fig5c.pdf", plot = gg)
 ```
 
-## Figure 6: Time-to-plan by region/agency
+## Figure 6a: Time-to-plan by region/agency
 
-```{r figure_6, warning = TRUE}
-ggplot(final_plans, aes(y = Elapsed_Years, x = Lead_Region)) +
+```{r figure_6a, warning = TRUE}
+plt <- ggplot(final_plans, aes(y = Elapsed_Years, x = Lead_Region)) +
   geom_violin(fill = "gray", alpha = 0.5, colour = NA) +
   geom_boxplot(colour = "gray20", fill = NA) +
   labs(x = "FWS Region / NMFS", y = "Time-to-Plan (years)") +
   theme_hc() + 
   theme(text = element_text(family = "Open Sans"))
+plt
+
+# ggsave("inst/figures/Fig6a.pdf", plot = plt)
+
+lm(Elapsed_Years ~ Lead_Region, data = final_plans) %>% summary()
+```
+
+## Figure 6b: Plan age by region/agency
+
+```{r figure_6b, warning = TRUE}
+final_plans$Plan_Age <- as.Date("2016-09-03") - final_plans$Rec_Plan_Date
+final_plans$Plan_Age_Years <- as.numeric(final_plans$Plan_Age / 365)
+plt <- ggplot(final_plans, aes(y = Plan_Age_Years, x = Lead_Region)) +
+  geom_violin(fill = "gray", alpha = 0.5, colour = NA) +
+  geom_boxplot(colour = "gray20", fill = NA) +
+  labs(x = "FWS Region / NMFS", y = "Plan Age (years)") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+plt
+
+# ggsave("inst/figures/Fig6b.pdf", plot = plt)
+
+lm(Plan_Age_Years ~ Lead_Region, data = final_plans) %>% summary()
+```
+
+And one quick final analysis here, just to show the negative time-to-plan, plan age correlation:
+
+```{r}
+ttp <- tapply(final_plans$Elapsed_Years, 
+              INDEX = final_plans$Lead_Region, 
+              FUN = median, na.rm = TRUE)
+age <- tapply(final_plans$Plan_Age_Years, 
+              INDEX = final_plans$Lead_Region, 
+              FUN = median, na.rm = TRUE)
+cor.test(age, ttp)
 ```

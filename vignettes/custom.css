@@ -16,6 +16,11 @@ h2 {
   font-weight: 500;
 }
 
+code {
+  font-size: larger;
+  font-family: "Source Code Pro";
+}
+
 .tocify {
   border-radius: 2px;
   font-size: large;
