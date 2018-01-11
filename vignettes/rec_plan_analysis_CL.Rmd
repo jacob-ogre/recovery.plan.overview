@@ -1,0 +1,477 @@
+---
+title: "Missing, delayed, and old: A status review of ESA recovery plans"
+author: "Jacob Malcom, Defenders of Wildlife"
+output: 
+  html_document:
+    code_folding: hide
+    css: custom.css
+    df_print: kable
+    fig_caption: yes
+    fig_width: 7
+    highlight: tango
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+# Reference
+
+This vignette accompanies a manuscript we will post to _PeerJ Preprints_ and submit to _Conservation Letters_. The preprint can be found [here](#).
+
+----
+
+# Abstract
+
+Recovery planning is an essential part of implementing the U.S. Endangered Species Act (ESA), but conservationists and government agencies recognize there are problems with the process. A common perception is that too many species lack recovery plans, these plans take too long to write, and plans are rarely updated to include new information. Using data from all U.S. domestic and transboundary ESA-listed species--those species we expect should have recovery plans--we quantify basic characteristics of ESA recovery planning. We show that ~1/4 of these listed species lack recovery plans; the average recovery plan has taken >5 years to be developed after listing; and half of recovery plans are 19 or more years old. These results are not unexpected given dwindling budgets and more species to protect, but they underscore the need for systematic improvements to recovery planning. We discuss how many of the shortcomings we identify here can be ameliorated, at least in part, by transitioning to modern, web-based recovery plans. 
+
+----
+
+```{r setup, message = FALSE}
+library(ecosscraper)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(knitr)
+library(lubridate)
+library(plotly)
+library(recovery.plan.overview)
+library(skimr)
+library(stringr)
+library(viridis)
+```
+
+# Data prep
+
+```{r prep_data, message = FALSE}
+have <- readRDS("data/fin_have_plans_2018-01-08.rds")
+miss <- readRDS("data/missing_plans_2018-01-08.rds")
+tecp <- readRDS("data/TECP_2018-01-08.rds")
+final_have <- filter(have, plan_status == "Final")
+
+tecp_elig <- filter(
+  tecp, 
+  as.numeric(as.Date("2018-01-08") - first_listed) > 365*2.5
+)
+
+have$year_plan <- year(have$date)
+have$year_list <- year(have$first_listed)
+miss$year_list <- year(miss$first_listed)
+tecp$year_list <- year(tecp$first_listed)
+
+official <- filter(have, grepl(have$plan_status, pattern = "Final|Revision"))
+drafts <- dplyr::setdiff(have, official) %>%
+  filter(plan_status != "Exempt")
+by_plan <- distinct(have, title, .keep_all = TRUE)
+```
+
+```{r basic_counts, message=FALSE}
+# Have to use a combination of distinct w/ population or title because of 
+# quirkiness with join on species and how FWS presents their data tables on ECOS
+w_final <- filter(have, plan_status == "Final") %>%
+  distinct(species, where_listed, .keep_all = TRUE)
+str_c("# species with final plans: ", dim(w_final)[1], "\n\n") %>% cat()
+  
+revs <- c("Final Revision 1", "Final Revision 2", "Final Revision 3", 
+            "Draft Revision 1", "Draft Revision 2")
+w_revision <- filter(have, plan_status %in% revs) %>%
+  distinct(species, where_listed, .keep_all = TRUE)
+str_c("# species with revised plans: ", dim(w_revision)[1], "\n\n") %>% cat()
+
+w_plan <- rbind(spp_w_final, spp_w_revision)
+str_c("# species with final or revised plans: ", dim(w_plan)[1], "\n\n") %>% cat()
+
+w_draft <- filter(have, plan_status == "Draft") %>%
+  distinct(title, species, .keep_all = TRUE)
+str_c("# species with draft plans: ", dim(w_draft)[1], "\n\n") %>% cat()
+
+drafts <- c("Conservation Strategy", "Draft", "Outline")
+w_draft <- filter(have, plan_status %in% drafts) %>%
+  distinct(title, species, .keep_all = TRUE)
+str_c("# species with draft or outline plans: ", dim(w_draft)[1], "\n\n") %>% cat()
+```
+
+# Analyses
+
+## Summary statistics
+
+```{r summary_stats}
+loc_summary <- function(x) {
+  c(min = round(min(x, na.rm = TRUE), 1),
+    median = round(median(x, na.rm = TRUE), 1),
+    mean = round(mean(x, na.rm = TRUE), 1),
+    max = round(max(x, na.rm = TRUE)))
+}
+loc_sum_2 <- function(x) {
+  c(min = as.character(min(x, na.rm = TRUE)),
+    median = as.character(median(x, na.rm = TRUE)),
+    mean = as.character(mean(x, na.rm = TRUE)),
+    max = as.character(max(x, na.rm = TRUE)))
+}
+
+delta_tmp <- loc_summary(w_final$elapsed_years)
+listd_tmp <- loc_sum_2(w_final$first_listed)
+pland_tmp <- loc_sum_2(w_final$date)
+rev_listd_tmp <- loc_sum_2(w_revision$first_listed)
+rev_pland_tmp <- loc_sum_2(w_revision$date)
+draft_tmp <- loc_sum_2(w_draft$date)
+draft_del <- loc_summary(w_draft$elapsed_years)
+placehold <- c(" ", " ", " ", " ")
+to_show_df <- rbind(placehold, listd_tmp, pland_tmp, delta_tmp, placehold, 
+                    rev_listd_tmp, rev_pland_tmp, placehold, 
+                    draft_tmp, draft_del) %>% as_data_frame()
+guide <- c("Spp. w/ Final Plans", 
+                    "Listed Date", "Plan Date",  "Years Elapsed", 
+                    "Spp. w/ Revised Plans",  "Listed Date", "Plan Date", 
+                    "Spp. w/ Draft Plans", "Draft Date", "Years Elapsed")
+to_show_df <- cbind(guide, to_show_df)
+
+kable(to_show_df,
+      caption = "Summary statistics of time between listing and final recovery plan. Min, median, mean, and max are given in years.",
+      digits = 1,
+      align = "c")
+
+write.table(data.frame(to_show_df),
+            file = "vignettes/summary_stats.tsv",
+            row.names = FALSE,
+            sep = "\t",
+            quote = FALSE)
+```
+
+## Plans by region and agency
+
+```{r tab_region, echo = TRUE, warning = FALSE}
+reg_elig <- table(tecp_elig$lead_region) %>% as_data_frame()
+plan_elig <- table(w_plan$lead_region) %>% as_data_frame()
+res <- left_join(plan_elig, reg_elig, by = "Var1")
+names(res) <- c("region", "with_plan", "n_eligible")
+res$prop_plan <- round(res$with_plan / res$n_eligible, 3) * 100
+
+row.names(res) <- NULL
+kable(res, 
+      caption = "Distribution of plans among FWS regions and NMFS.", 
+      align = "c",
+      digits = 3)
+```
+
+```{r lm_region, echo = TRUE}
+mod <- lm(final_have$elapsed_years ~ final_have$lead_region)
+summary(mod)
+anova(mod)
+hist(resid(mod))
+```
+
+```{r tab_taxon, echo = TRUE, warning = FALSE}
+taxo_elig <- table(tecp_elig$species_group) %>% as_data_frame()
+intermed <- distinct(w_plan, species, title, .keep_all = TRUE)
+plan_taxo <- table(intermed$species_group) %>%  as_data_frame()
+res <- left_join(plan_taxo, taxo_elig, by = "Var1")
+names(res) <- c("taxon", "with_plan", "n_eligible")
+res$prop_plan <- round(res$with_plan / res$n_eligible, 3) * 100
+
+row.names(res) <- NULL
+kable(res, 
+      caption = "Distribution of recovery plans among taxonomic groups.", 
+      align = "c",
+      digits = 3)
+```
+
+# Figures
+
+## Figure 1a: Number of species listed, with/out plans
+
+```{r figure_1a, message = FALSE}
+year <- seq(min(tecp$year_list, na.rm = TRUE),
+            max(tecp$year_list, na.rm = TRUE))
+n_listed <- lapply(year, 
+              FUN = function(x) {
+                sum(tecp$year_list <= x,  na.rm = TRUE)
+              }) %>% unlist()
+n_official <- lapply(year, function(x) { sum(official$year_plan <= x) }) %>%
+  unlist()
+n_draft <- lapply(year, function(x) { sum(drafts$year_plan <= x) }) %>%
+  unlist()
+
+n_list_df <- data_frame(year, n_listed, n_official, n_draft)
+n_list_df$n_no_plan <- with(n_list_df, n_listed - n_official - n_draft)
+
+plt <- ggplot(n_list_df, aes(y = n_listed, x = year)) +
+  geom_line() +
+  geom_line(aes(y = n_no_plan, x = year),
+            colour = "red",
+            size = 1) +
+  geom_line(aes(y = n_official, x = year), 
+            colour = "gray70",
+            linetype = "dashed") +
+  geom_line(aes(y = n_draft, x = year), 
+            colour = "gray70",
+            linetype = "dotted") +
+  labs(x = "", y = "Count") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+ggplotly(plt)
+
+ggsave("inst/figures/Fig1A.pdf", plot = plt)
+```
+
+## Figure 1b: Plans/species with plans through time
+
+```{r figure_1b, message = FALSE, size="100%"}
+n_listed <- lapply(
+  year, function(x) sum(tecp$year_list == x, na.rm = TRUE)
+) %>%  unlist()
+n_off_spp <- lapply(
+  year, function(x) sum(official$year_plan == x, na.rm = TRUE)
+) %>% unlist()
+n_draft_spp <- lapply(
+  year, function(x) sum(drafts$year_plan == x, na.rm = TRUE)
+) %>% unlist()
+n_plans <- lapply(
+  year, function(x) sum(by_plan$year_plan == x, na.rm = TRUE)
+) %>% unlist()
+
+n_list_df <- data_frame(year, n_listed, n_off_spp, n_draft_spp, n_plans) %>%
+  mutate(pct_spp_w_plan = n_off_spp / n_listed)
+# n_list_df$pct_w_plan <- n_list_df$n_w_plans / n_list_df$n_listed
+
+plt <- ggplot(n_list_df, aes(y = n_plans, x = year)) +
+  geom_line(colour = "gray70") +
+  geom_line(aes(y = n_off_spp, x = year)) +
+  geom_line(aes(y = n_draft_spp, x = year), 
+            linetype = "dotted", 
+            color = "gray70") +
+  labs(x = "Year",
+       y = "Count") +
+  theme_hc() +
+  theme(text = element_text(family = "Open Sans"))
+ggplotly(plt)
+
+ggsave("inst/figures/Fig1B.pdf", plot = plt)
+```
+
+## Figure 2: Proportion with plans by listing year
+
+```{r figure_2, message = FALSE}
+pct_w_plan <- lapply(
+  year,
+  function(x) {
+    ls_n <- sum(tecp$year_list == x, na.rm = TRUE)
+    of_n <- sum(official$year_list == x, na.rm = TRUE)
+    ifelse(ls_n == 0, NA, of_n / ls_n)
+  }
+) %>% unlist()
+n_list_df$pct_w_plan <- pct_w_plan
+plt <- ggplot(n_list_df, aes(y = pct_w_plan, x = year)) +
+  geom_point(size = 3, alpha = 0.5) +
+  geom_smooth(level = 0.9, alpha = 0, colour = "black") +
+  scale_y_continuous(limits = c(0,1)) +
+  labs(x = "Year ESA-listed",
+       y = "Proportion of species with official plans") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+ggplotly(plt)
+
+# ggsave("inst/figures/Fig2.pdf", plot = plt)
+```
+
+## Figure 3a: Times-to-plan (histogram)
+
+```{r figure_3a, message = FALSE}
+plt <- qplot(official$elapsed_years, geom = "histogram") +
+  labs(x = "Time between date listed and recovery plan date (years)",
+       y = "Number of species") +
+  theme_hc() +
+  theme(plot.title=element_text(hjust = 0, size = 18),
+        text = element_text(family = "Open Sans"))
+plt
+
+# ggsave("inst/figures/Fig3a.pdf", plot = plt)
+```
+
+## Figure 3b: Times-to-plan (percentile)
+
+```{r figure_3b, message = FALSE}
+time_to_plan <- sort(final_have$elapsed_years, decreasing = FALSE)
+order <- seq_along(time_to_plan)
+percentile <- 100 * order / max(order)
+pctile <- data_frame(time_to_plan, order, percentile)
+
+plt <- ggplot(pctile, aes(y = time_to_plan, x = percentile)) +
+  geom_line() +
+  labs(x = "Percentile",
+       y = "Time-to-recovery plan (years)\n") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans")) 
+ggplotly(plt) %>% layout(font = list(family = "Open Sans"))
+
+# ggsave("inst/figures/Fig3b.pdf", plot = plt)
+```
+
+## Figure 4: Times-to-plan through time
+
+```{r figure_4, message = FALSE}
+tmp <- final_have
+tmp$year_listed <- year(tmp$first_listed)
+tmp$year_plan <- year(tmp$date)
+years <- seq(min(tmp$year_listed, na.rm = TRUE),
+             max(tmp$year_listed, na.rm = TRUE))
+
+cur_fx <- function(df, x, fn) {
+  sub_df <- filter(df, year_listed == x)
+  if(dim(sub_df)[1] == 0) return(NA)
+  switch(fn,
+         mean = mean(sub_df$elapsed_years, na.rm = TRUE),
+         min = min(sub_df$elapsed_years, na.rm = TRUE),
+         max = max(sub_df$elapsed_years, na.rm = TRUE)
+  )
+}
+
+# # This is to calculate a potential "minimum time-to-plan" for species 
+# # that do not have final plans or final plans in revision. However, 
+# # the results aren't particularly informative and are not included in
+# # the paper or the figure below.
+# get_potential <- function(x, df) {
+#   sub_df <- filter(df, Year_Listed == x)
+#   if(dim(sub_df)[1] == 0) return(NA)
+#   mean = mean(sub_df$Age_Min_Age, na.rm = TRUE)
+#   return(mean / 365)
+# }
+
+n_plans <- lapply(years, function(x) {dim(filter(tmp, year_plan == x))[1]} ) %>%
+  unlist()
+tm_mean <- unlist(lapply(years, cur_fx, df = tmp, fn = "mean"))
+tm_min <- unlist(lapply(years, cur_fx, df = tmp, fn = "min"))
+tm_max <- unlist(lapply(years, cur_fx, df = tmp, fn = "max"))
+# potential_age <- unlist(lapply(years, get_potential, df = listed))
+dat <- data_frame(years, tm_mean, tm_min, tm_max, # potential_age, 
+                  n_plans)
+names(dat) <- c("Year", "Mean", "Min", "Max", #"Potential", 
+                "N_plans")
+
+plt <- ggplot(dat, aes(y = Mean, x = Year)) +
+  geom_line() +
+  geom_line(aes(y = Min, x = Year), colour = "gray70") +
+  geom_line(aes(y = Max, x = Year), colour = "gray70") +
+  # geom_line(aes(y = Potential, x = Year), colour = "red") +
+  labs(x = "Year of Listing",
+       y = "Time-to-plan (years)\n") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+ggplotly(plt) %>% layout(font = list(family = "Open Sans"))
+
+ggsave("inst/figures/Fig4.pdf", plot = plt)
+```
+
+Including one analysis here because the data frame is built in the chunk above:
+
+```{r time_plan_lm}
+# Subset to > 1978 because plans were not required before then...
+mod <- lm(elapsed_years ~ year_listed, data = filter(tmp, year_listed > 1978))
+summary(mod)
+aov(mod)
+hist(resid(mod))
+```
+
+## Figure 5a: Plan ages
+
+```{r figure_5a, message = FALSE}
+official$plan_age <- as.numeric(as.Date("2018-01-08") - official$date) / 365
+skimr::skim(official$plan_age)
+plt <- qplot(official$plan_age, geom = "histogram") +
+  labs(x = "Plan age (years)",
+       y = "Number of species") +
+  theme_hc() +
+  theme(plot.title=element_text(hjust = 0, size = 18),
+        text = element_text(family = "Open Sans"))
+plt
+
+# ggsave("inst/figures/Fig5a.pdf", plot = plt)
+```
+
+## Figure 5b: Species' plan age (pctile)
+
+```{r figure_5b, message = FALSE}
+age <- sort(official$plan_age, decreasing = FALSE)
+order <- seq(1:length(age))
+percentile <- 100 * order / max(order)
+pctile <- data_frame(age, order, percentile)
+
+gg <- ggplot(pctile, aes(y = age, x = percentile)) +
+        geom_line() +
+        labs(x = "Percentile",
+             y = "Age of species' plan (years)\n") +
+        theme_hc() + 
+        theme(text = element_text(family = "Open Sans"))
+ggplotly(gg) %>% layout(font = list(family = "Open Sans"))
+
+ggsave("inst/figures/Fig5b.pdf", plot = gg)
+```
+
+## Figure 5c: Plan age (percentile)
+
+```{r figure_5c, message = FALSE}
+tmp <- distinct(official, title, .keep_all = TRUE)
+age <- sort(tmp$plan_age, decreasing = FALSE)
+order <- seq_along(age)
+percentile <- 100 * (order / max(order))
+pctile <- data_frame(age, order, percentile)
+
+gg <- ggplot(pctile, aes(y = age, x = percentile)) +
+        geom_line() +
+        labs(x = "Percentile",
+             y = "Plan age (years)\n") +
+        theme_hc() + 
+        theme(text = element_text(family = "Open Sans"))
+ggplotly(gg) %>% layout(font = list(family = "Open Sans"))
+
+# ggsave("inst/figures/Fig5c.pdf", plot = gg)
+
+skim(tmp$plan_age)
+skim(official$plan_age)
+```
+
+
+## Figure 6a: Time-to-plan by region/agency
+
+```{r figure_6a, warning = TRUE}
+plt <- ggplot(official, aes(y = elapsed_years, x = lead_region)) +
+  geom_violin(fill = "gray", alpha = 0.8, colour = NA) +
+  geom_jitter(height = 0, alpha = 0.2) +
+  # geom_boxplot(colour = "gray20", fill = NA) +
+  labs(x = "FWS Region / NMFS", y = "Time-to-Plan (years)") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+plt
+
+ggsave("inst/figures/Fig6a.pdf", plot = plt)
+```
+
+## Figure 6b: Plan age by region/agency
+
+```{r figure_6b, warning = TRUE}
+plt <- ggplot(official, aes(y = plan_age, x = lead_region)) +
+  geom_violin(fill = "gray", alpha = 0.7, colour = NA) +
+  geom_jitter(height = 0, alpha = 0.2) +
+  # geom_boxplot(colour = "gray20", fill = NA) +
+  labs(x = "FWS Region / NMFS", y = "Plan Age (years)") +
+  theme_hc() + 
+  theme(text = element_text(family = "Open Sans"))
+plt
+
+ggsave("inst/figures/Fig6b.pdf", plot = plt)
+
+lm(plan_age ~ lead_region, data = official) %>% summary()
+```
+
+And one quick final analysis here, just to show the negative time-to-plan, plan age correlation:
+
+```{r}
+ttp <- tapply(official$elapsed_years, 
+              INDEX = official$lead_region, 
+              FUN = median, na.rm = TRUE)
+age <- tapply(official$plan_age, 
+              INDEX = official$lead_region, 
+              FUN = median, na.rm = TRUE)
+cor.test(age, ttp)
+```
+
+

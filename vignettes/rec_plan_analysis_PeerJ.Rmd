@@ -288,7 +288,7 @@ ggplotly(plt)
 
 ## Figure 1b: Plans/species with plans through time
 
-```{r figure_1b, message = FALSE}
+```{r figure_1b, message = FALSE, size="100%"}
 n_listed <- unlist(lapply(year, 
                           function(x) sum(listed$Year_Listed == x, na.rm = TRUE)))
 n_w_plans <- unlist(lapply(year, 
@@ -532,3 +532,5 @@ age <- tapply(final_plans$Plan_Age_Years,
               FUN = median, na.rm = TRUE)
 cor.test(age, ttp)
 ```
+
+
