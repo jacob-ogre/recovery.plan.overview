@@ -29,6 +29,7 @@ Recovery planning is an essential part of implementing the U.S. Endangered Speci
 ```{r setup, message = FALSE}
 library(ecosscraper)
 library(dplyr)
+library(extrafont)
 library(ggplot2)
 library(ggthemes)
 library(knitr)
@@ -38,6 +39,8 @@ library(recovery.plan.overview)
 library(skimr)
 library(stringr)
 library(viridis)
+
+
 ```
 
 # Data prep
@@ -77,17 +80,17 @@ w_revision <- filter(have, plan_status %in% revs) %>%
   distinct(species, where_listed, .keep_all = TRUE)
 str_c("# species with revised plans: ", dim(w_revision)[1], "\n\n") %>% cat()
 
-w_plan <- rbind(spp_w_final, spp_w_revision)
+w_plan <- rbind(w_final, w_revision)
 str_c("# species with final or revised plans: ", dim(w_plan)[1], "\n\n") %>% cat()
 
 w_draft <- filter(have, plan_status == "Draft") %>%
   distinct(title, species, .keep_all = TRUE)
 str_c("# species with draft plans: ", dim(w_draft)[1], "\n\n") %>% cat()
 
-drafts <- c("Conservation Strategy", "Draft", "Outline")
-w_draft <- filter(have, plan_status %in% drafts) %>%
+unofficial <- c("Conservation Strategy", "Draft", "Outline")
+unoffic <- filter(have, plan_status %in% unofficial) %>%
   distinct(title, species, .keep_all = TRUE)
-str_c("# species with draft or outline plans: ", dim(w_draft)[1], "\n\n") %>% cat()
+str_c("# species with draft or outline plans: ", dim(unoffic)[1], "\n\n") %>% cat()
 ```
 
 # Analyses
@@ -151,6 +154,11 @@ kable(res,
       caption = "Distribution of plans among FWS regions and NMFS.", 
       align = "c",
       digits = 3)
+write.table(data.frame(res),
+            file = "vignettes/summary_by_region.tsv",
+            row.names = FALSE,
+            sep = "\t",
+            quote = FALSE)
 ```
 
 ```{r lm_region, echo = TRUE}
@@ -173,13 +181,18 @@ kable(res,
       caption = "Distribution of recovery plans among taxonomic groups.", 
       align = "c",
       digits = 3)
+write.table(data.frame(res),
+            file = "vignettes/summary_by_taxo.tsv",
+            row.names = FALSE,
+            sep = "\t",
+            quote = FALSE)
 ```
 
 # Figures
 
 ## Figure 1a: Number of species listed, with/out plans
 
-```{r figure_1a, message = FALSE}
+```{r figure_1a, message = FALSE, dev = "cairo_pdf"}
 year <- seq(min(tecp$year_list, na.rm = TRUE),
             max(tecp$year_list, na.rm = TRUE))
 n_listed <- lapply(year, 
@@ -188,11 +201,11 @@ n_listed <- lapply(year,
               }) %>% unlist()
 n_official <- lapply(year, function(x) { sum(official$year_plan <= x) }) %>%
   unlist()
-n_draft <- lapply(year, function(x) { sum(drafts$year_plan <= x) }) %>%
+n_unofficial <- lapply(year, function(x) { sum(unoffic$year_plan <= x) }) %>%
   unlist()
 
-n_list_df <- data_frame(year, n_listed, n_official, n_draft)
-n_list_df$n_no_plan <- with(n_list_df, n_listed - n_official - n_draft)
+n_list_df <- data_frame(year, n_listed, n_official, n_unofficial)
+n_list_df$n_no_plan <- with(n_list_df, n_listed - n_official - n_unofficial)
 
 plt <- ggplot(n_list_df, aes(y = n_listed, x = year)) +
   geom_line() +
@@ -202,12 +215,12 @@ plt <- ggplot(n_list_df, aes(y = n_listed, x = year)) +
   geom_line(aes(y = n_official, x = year), 
             colour = "gray70",
             linetype = "dashed") +
-  geom_line(aes(y = n_draft, x = year), 
+  geom_line(aes(y = n_unofficial, x = year), 
             colour = "gray70",
             linetype = "dotted") +
   labs(x = "", y = "Count") +
   theme_hc() + 
-  theme(text = element_text(family = "Open Sans"))
+  theme(text = element_text(family = "Arial"))
 ggplotly(plt)
 
 ggsave("inst/figures/Fig1A.pdf", plot = plt)
@@ -223,7 +236,7 @@ n_off_spp <- lapply(
   year, function(x) sum(official$year_plan == x, na.rm = TRUE)
 ) %>% unlist()
 n_draft_spp <- lapply(
-  year, function(x) sum(drafts$year_plan == x, na.rm = TRUE)
+  year, function(x) sum(unoffic$year_plan == x, na.rm = TRUE)
 ) %>% unlist()
 n_plans <- lapply(
   year, function(x) sum(by_plan$year_plan == x, na.rm = TRUE)
@@ -242,7 +255,7 @@ plt <- ggplot(n_list_df, aes(y = n_plans, x = year)) +
   labs(x = "Year",
        y = "Count") +
   theme_hc() +
-  theme(text = element_text(family = "Open Sans"))
+  theme(text = element_text(family = "Arial"))
 ggplotly(plt)
 
 ggsave("inst/figures/Fig1B.pdf", plot = plt)
@@ -267,10 +280,10 @@ plt <- ggplot(n_list_df, aes(y = pct_w_plan, x = year)) +
   labs(x = "Year ESA-listed",
        y = "Proportion of species with official plans") +
   theme_hc() + 
-  theme(text = element_text(family = "Open Sans"))
+  theme(text = element_text(family = "Arial"))
 ggplotly(plt)
 
-# ggsave("inst/figures/Fig2.pdf", plot = plt)
+ggsave("inst/figures/Fig2.pdf", plot = plt)
 ```
 
 ## Figure 3a: Times-to-plan (histogram)
@@ -281,7 +294,7 @@ plt <- qplot(official$elapsed_years, geom = "histogram") +
        y = "Number of species") +
   theme_hc() +
   theme(plot.title=element_text(hjust = 0, size = 18),
-        text = element_text(family = "Open Sans"))
+        text = element_text(family = "Arial"))
 plt
 
 # ggsave("inst/figures/Fig3a.pdf", plot = plt)
@@ -300,10 +313,10 @@ plt <- ggplot(pctile, aes(y = time_to_plan, x = percentile)) +
   labs(x = "Percentile",
        y = "Time-to-recovery plan (years)\n") +
   theme_hc() + 
-  theme(text = element_text(family = "Open Sans")) 
-ggplotly(plt) %>% layout(font = list(family = "Open Sans"))
+  theme(text = element_text(family = "Arial")) 
+ggplotly(plt) %>% layout(font = list(family = "Arial"))
 
-# ggsave("inst/figures/Fig3b.pdf", plot = plt)
+ggsave("inst/figures/Fig3b.pdf", plot = plt)
 ```
 
 ## Figure 4: Times-to-plan through time
@@ -355,8 +368,8 @@ plt <- ggplot(dat, aes(y = Mean, x = Year)) +
   labs(x = "Year of Listing",
        y = "Time-to-plan (years)\n") +
   theme_hc() + 
-  theme(text = element_text(family = "Open Sans"))
-ggplotly(plt) %>% layout(font = list(family = "Open Sans"))
+  theme(text = element_text(family = "Arial"))
+ggplotly(plt) %>% layout(font = list(family = "Arial"))
 
 ggsave("inst/figures/Fig4.pdf", plot = plt)
 ```
@@ -381,7 +394,7 @@ plt <- qplot(official$plan_age, geom = "histogram") +
        y = "Number of species") +
   theme_hc() +
   theme(plot.title=element_text(hjust = 0, size = 18),
-        text = element_text(family = "Open Sans"))
+        text = element_text(family = "Arial"))
 plt
 
 # ggsave("inst/figures/Fig5a.pdf", plot = plt)
@@ -400,8 +413,8 @@ gg <- ggplot(pctile, aes(y = age, x = percentile)) +
         labs(x = "Percentile",
              y = "Age of species' plan (years)\n") +
         theme_hc() + 
-        theme(text = element_text(family = "Open Sans"))
-ggplotly(gg) %>% layout(font = list(family = "Open Sans"))
+        theme(text = element_text(family = "Arial"))
+ggplotly(gg) %>% layout(font = list(family = "Arial"))
 
 ggsave("inst/figures/Fig5b.pdf", plot = gg)
 ```
@@ -420,10 +433,10 @@ gg <- ggplot(pctile, aes(y = age, x = percentile)) +
         labs(x = "Percentile",
              y = "Plan age (years)\n") +
         theme_hc() + 
-        theme(text = element_text(family = "Open Sans"))
-ggplotly(gg) %>% layout(font = list(family = "Open Sans"))
+        theme(text = element_text(family = "Arial"))
+ggplotly(gg) %>% layout(font = list(family = "Arial"))
 
-# ggsave("inst/figures/Fig5c.pdf", plot = gg)
+ggsave("inst/figures/Fig5c.pdf", plot = gg)
 
 skim(tmp$plan_age)
 skim(official$plan_age)
@@ -435,11 +448,11 @@ skim(official$plan_age)
 ```{r figure_6a, warning = TRUE}
 plt <- ggplot(official, aes(y = elapsed_years, x = lead_region)) +
   geom_violin(fill = "gray", alpha = 0.8, colour = NA) +
-  geom_jitter(height = 0, alpha = 0.2) +
-  # geom_boxplot(colour = "gray20", fill = NA) +
+  # geom_jitter(height = 0, alpha = 0.2) +
+  geom_boxplot(colour = "gray20", fill = NA) +
   labs(x = "FWS Region / NMFS", y = "Time-to-Plan (years)") +
   theme_hc() + 
-  theme(text = element_text(family = "Open Sans"))
+  theme(text = element_text(family = "Arial"))
 plt
 
 ggsave("inst/figures/Fig6a.pdf", plot = plt)
@@ -450,11 +463,11 @@ ggsave("inst/figures/Fig6a.pdf", plot = plt)
 ```{r figure_6b, warning = TRUE}
 plt <- ggplot(official, aes(y = plan_age, x = lead_region)) +
   geom_violin(fill = "gray", alpha = 0.7, colour = NA) +
-  geom_jitter(height = 0, alpha = 0.2) +
-  # geom_boxplot(colour = "gray20", fill = NA) +
+  # geom_jitter(height = 0, alpha = 0.2) +
+  geom_boxplot(colour = "gray20", fill = NA) +
   labs(x = "FWS Region / NMFS", y = "Plan Age (years)") +
   theme_hc() + 
-  theme(text = element_text(family = "Open Sans"))
+  theme(text = element_text(family = "Arial"))
 plt
 
 ggsave("inst/figures/Fig6b.pdf", plot = plt)
