@@ -46,9 +46,9 @@ library(viridis)
 # Data prep
 
 ```{r prep_data, message = FALSE}
-have <- readRDS("data/fin_have_plans_2018-01-08.rds")
-miss <- readRDS("data/missing_plans_2018-01-08.rds")
-tecp <- readRDS("data/TECP_2018-01-08.rds")
+have <- readRDS("../data/fin_have_plans_2018-01-08.rds")
+miss <- readRDS("../data/missing_plans_2018-01-08.rds")
+tecp <- readRDS("../data/TECP_2018-01-08.rds")
 final_have <- filter(have, plan_status == "Final")
 
 tecp_elig <- filter(
@@ -133,11 +133,11 @@ kable(to_show_df,
       digits = 1,
       align = "c")
 
-write.table(data.frame(to_show_df),
-            file = "vignettes/summary_stats.tsv",
-            row.names = FALSE,
-            sep = "\t",
-            quote = FALSE)
+# write.table(data.frame(to_show_df),
+#             file = "vignettes/summary_stats.tsv",
+#             row.names = FALSE,
+#             sep = "\t",
+#             quote = FALSE)
 ```
 
 ## Plans by region and agency
@@ -154,11 +154,11 @@ kable(res,
       caption = "Distribution of plans among FWS regions and NMFS.", 
       align = "c",
       digits = 3)
-write.table(data.frame(res),
-            file = "vignettes/summary_by_region.tsv",
-            row.names = FALSE,
-            sep = "\t",
-            quote = FALSE)
+# write.table(data.frame(res),
+#             file = "vignettes/summary_by_region.tsv",
+#             row.names = FALSE,
+#             sep = "\t",
+#             quote = FALSE)
 ```
 
 ```{r lm_region, echo = TRUE}
@@ -181,11 +181,11 @@ kable(res,
       caption = "Distribution of recovery plans among taxonomic groups.", 
       align = "c",
       digits = 3)
-write.table(data.frame(res),
-            file = "vignettes/summary_by_taxo.tsv",
-            row.names = FALSE,
-            sep = "\t",
-            quote = FALSE)
+# write.table(data.frame(res),
+#             file = "vignettes/summary_by_taxo.tsv",
+#             row.names = FALSE,
+#             sep = "\t",
+#             quote = FALSE)
 ```
 
 # Figures
@@ -223,7 +223,7 @@ plt <- ggplot(n_list_df, aes(y = n_listed, x = year)) +
   theme(text = element_text(family = "Arial"))
 ggplotly(plt)
 
-ggsave("inst/figures/Fig1A.pdf", plot = plt)
+# ggsave("inst/figures/Fig1A.pdf", plot = plt)
 ```
 
 ## Figure 1b: Plans/species with plans through time
@@ -258,7 +258,7 @@ plt <- ggplot(n_list_df, aes(y = n_plans, x = year)) +
   theme(text = element_text(family = "Arial"))
 ggplotly(plt)
 
-ggsave("inst/figures/Fig1B.pdf", plot = plt)
+# ggsave("inst/figures/Fig1B.pdf", plot = plt)
 ```
 
 ## Figure 2: Proportion with plans by listing year
@@ -283,7 +283,7 @@ plt <- ggplot(n_list_df, aes(y = pct_w_plan, x = year)) +
   theme(text = element_text(family = "Arial"))
 ggplotly(plt)
 
-ggsave("inst/figures/Fig2.pdf", plot = plt)
+# ggsave("inst/figures/Fig2.pdf", plot = plt)
 ```
 
 ## Figure 3a: Times-to-plan (histogram)
@@ -316,7 +316,7 @@ plt <- ggplot(pctile, aes(y = time_to_plan, x = percentile)) +
   theme(text = element_text(family = "Arial")) 
 ggplotly(plt) %>% layout(font = list(family = "Arial"))
 
-ggsave("inst/figures/Fig3b.pdf", plot = plt)
+# ggsave("inst/figures/Fig3b.pdf", plot = plt)
 ```
 
 ## Figure 4: Times-to-plan through time
@@ -371,7 +371,7 @@ plt <- ggplot(dat, aes(y = Mean, x = Year)) +
   theme(text = element_text(family = "Arial"))
 ggplotly(plt) %>% layout(font = list(family = "Arial"))
 
-ggsave("inst/figures/Fig4.pdf", plot = plt)
+# ggsave("inst/figures/Fig4.pdf", plot = plt)
 ```
 
 Including one analysis here because the data frame is built in the chunk above:
@@ -416,7 +416,7 @@ gg <- ggplot(pctile, aes(y = age, x = percentile)) +
         theme(text = element_text(family = "Arial"))
 ggplotly(gg) %>% layout(font = list(family = "Arial"))
 
-ggsave("inst/figures/Fig5b.pdf", plot = gg)
+# ggsave("inst/figures/Fig5b.pdf", plot = gg)
 ```
 
 ## Figure 5c: Plan age (percentile)
@@ -436,7 +436,7 @@ gg <- ggplot(pctile, aes(y = age, x = percentile)) +
         theme(text = element_text(family = "Arial"))
 ggplotly(gg) %>% layout(font = list(family = "Arial"))
 
-ggsave("inst/figures/Fig5c.pdf", plot = gg)
+# ggsave("inst/figures/Fig5c.pdf", plot = gg)
 
 skim(tmp$plan_age)
 skim(official$plan_age)
@@ -455,7 +455,7 @@ plt <- ggplot(official, aes(y = elapsed_years, x = lead_region)) +
   theme(text = element_text(family = "Arial"))
 plt
 
-ggsave("inst/figures/Fig6a.pdf", plot = plt)
+# ggsave("inst/figures/Fig6a.pdf", plot = plt)
 ```
 
 ## Figure 6b: Plan age by region/agency
@@ -470,7 +470,7 @@ plt <- ggplot(official, aes(y = plan_age, x = lead_region)) +
   theme(text = element_text(family = "Arial"))
 plt
 
-ggsave("inst/figures/Fig6b.pdf", plot = plt)
+# ggsave("inst/figures/Fig6b.pdf", plot = plt)
 
 lm(plan_age ~ lead_region, data = official) %>% summary()
 ```
