@@ -1,6 +1,7 @@
 ---
 title: "Missing, delayed, and old: A status review of ESA recovery plans"
-author: "Jacob Malcom, Defenders of Wildlife"
+author: "Jacob Malcom and Ya-Wei Li, Defenders of Wildlife"
+date: "2018-01-25"
 output: 
   html_document:
     code_folding: hide
@@ -16,13 +17,13 @@ output:
 
 # Reference
 
-This vignette accompanies a manuscript we will post to _PeerJ Preprints_ and submit to _Conservation Letters_. The preprint can be found [here](#).
+This vignette accompanies a manuscript we will post to _PeerJ Preprints_ and submit to _Conservation Letters_. The preprint--which will be updated in the near future--can be found [here](https://peerj.com/preprints/2882/).
 
 ----
 
 # Abstract
 
-Recovery planning is an essential part of implementing the U.S. Endangered Species Act (ESA), but conservationists and government agencies recognize there are problems with the process. A common perception is that too many species lack recovery plans, these plans take too long to write, and plans are rarely updated to include new information. Using data from all U.S. domestic and transboundary ESA-listed species--those species we expect should have recovery plans--we quantify basic characteristics of ESA recovery planning. We show that ~1/4 of these listed species lack recovery plans; the average recovery plan has taken >5 years to be developed after listing; and half of recovery plans are 19 or more years old. These results are not unexpected given dwindling budgets and more species to protect, but they underscore the need for systematic improvements to recovery planning. We discuss how many of the shortcomings we identify here can be ameliorated, at least in part, by transitioning to modern, web-based recovery plans. 
+Recovery planning is an essential part of implementing the U.S. Endangered Species Act (ESA), but conservationists and government agencies recognize there are problems with the process. A common perception is that too many species lack recovery plans, these plans take too long to write, and plans are rarely updated to include new information. Using data from all U.S. domestic and transboundary ESA-listed species--those species we expect should have recovery plans--we quantify basic characteristics of ESA recovery planning. We show that ~1/4 of these listed species lack recovery plans; the average recovery plan has taken >5 years to be developed after listing; and half of recovery plans are 20 or more years old. These results are not unexpected given dwindling budgets and more species to protect, but they underscore the need for systematic improvements to recovery planning. We discuss how many of the shortcomings we identify here can be ameliorated, at least in part, by transitioning to modern, web-based recovery plans. 
 
 ----
 
