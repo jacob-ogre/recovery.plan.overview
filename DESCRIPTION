@@ -12,12 +12,10 @@ LazyData: TRUE
 RoxygenNote: 5.0.1
 Imports:
     dplyr,
-    ecosscraper,
     ggplot2,
     ggthemes,
     knitr,
     lubridate,
     plotly,
-    rmdformats,
     stringr
 

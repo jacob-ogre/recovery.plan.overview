@@ -28,7 +28,7 @@ Recovery planning is an essential part of implementing the U.S. Endangered Speci
 ----
 
 ```{r setup, message = FALSE}
-library(ecosscraper)
+# library(ecosscraper)
 library(dplyr)
 library(extrafont)
 library(ggplot2)
