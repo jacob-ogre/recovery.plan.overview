@@ -47,8 +47,47 @@ library(viridis)
 # Data prep
 
 ```{r prep_data, message = FALSE}
+# have <- readRDS("data/fin_have_plans_2018-01-08.rds")
+# miss <- readRDS("data/missing_plans_2018-01-08.rds")
+# tecp <- readRDS("data/TECP_2018-01-08.rds")
 have <- readRDS("../data/fin_have_plans_2018-01-08.rds")
 miss <- readRDS("../data/missing_plans_2018-01-08.rds")
+
+# manual fix...unclear how I missed this:
+miss <- filter(miss, common_name != "Sperm whale")
+miss <- filter(miss, common_name != "North Atlantic Right Whale")
+spwh <- list(as.Date("2010-12-01"),
+          "Final Recovery Plan for the Sperm Whale",
+          "Final",
+          "Physeter macrocephalus",
+          "Sperm whale",
+          as.Date("1970-06-02"),
+          "Mammals",
+          "NMFS",
+          "Endangered",
+          "Wherever found",
+          "https://ecos.fws.gov/ecp0/profile/speciesProfile?sId=8363",
+          14792,
+          40.52,
+          "Physeter macrocephalusWherever found")
+narw <- list(
+          as.Date("2005-05-26"),
+          "RECOVERY PLAN FOR THE NORTH ATLANTIC RIGHT WHALE (EUBALAENA GLACIALIS) REVISION",
+          "Final Revision 2",
+          "Eubalaena glacialis",
+          "North Atlantic right whale",
+          as.Date("1970-06-02"),
+          "Mammals",
+          "NMFS",
+          "Endangered",
+          "Wherever found",
+          "https://ecos.fws.gov/ecp0/profile/speciesProfile?sId=8363",
+          12777,
+          35.01,
+          "Eubalaena glacialisWherever found")
+have <- rbind(have, spwh)
+have <- rbind(have, narw)
+
 tecp <- readRDS("../data/TECP_2018-01-08.rds")
 final_have <- filter(have, plan_status == "Final")
 
@@ -167,6 +206,14 @@ mod <- lm(final_have$elapsed_years ~ final_have$lead_region)
 summary(mod)
 anova(mod)
 hist(resid(mod))
+
+final_have$plan_age <- as.numeric(as.Date("2018-01-08") - final_have$date )
+mod <- lm(final_have$plan_age ~ final_have$lead_region)
+summary(mod)
+anova(mod)
+hist(resid(mod))
+
+cor.test(final_have$plan_age, final_have$elapsed)
 ```
 
 ```{r tab_taxon, echo = TRUE, warning = FALSE}
