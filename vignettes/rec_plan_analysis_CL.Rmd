@@ -39,9 +39,8 @@ library(plotly)
 library(recovery.plan.overview)
 library(skimr)
 library(stringr)
+library(tibble)
 library(viridis)
-
-
 ```
 
 # Data prep
@@ -52,6 +51,7 @@ library(viridis)
 # tecp <- readRDS("data/TECP_2018-01-08.rds")
 have <- readRDS("../data/fin_have_plans_2018-01-08.rds")
 miss <- readRDS("../data/missing_plans_2018-01-08.rds")
+tecp <- readRDS("../data/TECP_2018-01-08.rds")
 
 # manual fix...unclear how I missed this:
 miss <- filter(miss, common_name != "Sperm whale")
@@ -88,7 +88,6 @@ narw <- list(
 have <- rbind(have, spwh)
 have <- rbind(have, narw)
 
-tecp <- readRDS("../data/TECP_2018-01-08.rds")
 final_have <- filter(have, plan_status == "Final")
 
 tecp_elig <- filter(
@@ -104,6 +103,7 @@ tecp$year_list <- year(tecp$first_listed)
 official <- filter(have, grepl(have$plan_status, pattern = "Final|Revision"))
 drafts <- dplyr::setdiff(have, official) %>%
   filter(plan_status != "Exempt")
+official$plan_age <- as.numeric(as.Date("2018-01-08") - official$date)
 by_plan <- distinct(have, title, .keep_all = TRUE)
 ```
 
@@ -201,6 +201,92 @@ kable(res,
 #             quote = FALSE)
 ```
 
+```{r plan_age, echo = TRUE}
+age_by_spp <- median(official$plan_age, na.rm = TRUE)
+cat("Age by species: ", age_by_spp, "\n")
+qq <- distinct(official, title, .keep_all = TRUE)
+plan_age <- median(qq$plan_age, na.rm = TRUE)
+cat("Age by plan: ", plan_age, "\n")
+```
+
+Per Cons. Lett. editor suggestion, adding a couple of analyses of multispecies plans.
+
+```{r multispecies}
+multisp <- table(have$title) %>% 
+  sort(decreasing = TRUE) %>% 
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  rename(title = Var1, n_spp = Freq)
+plan_yrs <- data_frame(title = have$title, year = have$year_plan) %>%
+  distinct(.keep_all = TRUE)
+multisp <- left_join(multisp, plan_yrs, by = "title")
+
+singles <- filter(multisp, n_spp == 1)
+multis <- filter(multisp, n_spp > 1)
+
+have$multispp <- ifelse(
+  have$title %in% multis$title,
+  TRUE,
+  FALSE
+)
+
+qplot(data = have, x = multispp, y = elapsed, geom = "boxplot") +
+  labs(x = "Multispecies plan?", y = "Time-to-plan (days)") +
+  theme_hc()
+
+yrtab_byspp <- table(have$year_plan, have$multispp) %>% 
+  as.data.frame.matrix() %>%
+  rownames_to_column("year") %>%
+  mutate(pct_multi = `TRUE` / (`TRUE` + `FALSE`))
+yrtab_byspp$year <- as.numeric(yrtab_byspp$year)
+
+ggplot(data = yrtab_byspp, aes(x = year, y = pct_multi)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Year", y = "Percent of species covered by multispecies plan") +
+  theme_hc() +
+  scale_x_continuous(breaks = seq(1970, 2017, 5))
+
+single_yr <- table(singles$year) %>% 
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  rename(year = Var1, n_singles_plans = Freq)
+multi_yr <- table(multis$year) %>%
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  rename(year = Var1, n_multi_plans = Freq)
+by_year_multi <- full_join(single_yr, multi_yr, by = "year")
+by_year_multi$n_multi_plans <- ifelse(
+  is.na(by_year_multi$n_multi_plans),
+  0,
+  by_year_multi$n_multi_plans
+)
+by_year_multi$pct_single <- with(
+  data = by_year_multi, n_singles_plans / (n_singles_plans + n_multi_plans)
+)
+by_year_multi$pct_multi <- with(
+  data = by_year_multi, 1 - pct_single
+)
+by_year_multi$year <- as.numeric(by_year_multi$year)
+
+ggplot(data = by_year_multi, aes(x = year, y = pct_multi)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Year", y = "Proportion multi-species plans") +
+  theme_hc() +
+  scale_x_continuous(breaks = seq(1970, 2017, 5))
+
+mod1 <- lm(have$elapsed ~ have$year_plan + have$multispp)
+summary(mod1)
+hist(resid(mod1))
+qqnorm(resid(mod1))
+
+```
+
+Across all species and all plans, it looks like multispecies plans have shorter
+time-to-plan by about 734 days (median):
+
+```{r multi_median}
+tapply(have$elapsed, have$multispp, median)
+```
+
+Now, basic models for partitioning variation among regions, taxonomic groups:
+
 ```{r lm_region, echo = TRUE}
 mod <- lm(final_have$elapsed_years ~ final_have$lead_region)
 summary(mod)
@@ -234,6 +320,31 @@ kable(res,
 #             row.names = FALSE,
 #             sep = "\t",
 #             quote = FALSE)
+```
+
+Time-to-plan and plan age by taxonomic group
+
+```{r taxo_time}
+qplot(data = final_have, x = species_group, y = elapsed, geom = "boxplot") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  theme_hc() +
+  labs(x = "", y = "Time-to-plan (days)")
+
+mod2 <- lm(elapsed ~ species_group, data = final_have)
+summary(mod2)
+
+final_have$age <- as.numeric(as.Date("2018-01-08") - final_have$date)
+qplot(data = final_have, x = species_group, y = age, geom = "boxplot") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  theme_hc() +
+  labs(x = "", y = "Plan age (days)")
+
+mod3 <- lm(age ~ species_group, data = final_have)
+summary(mod3)
+tapply(final_have$age, final_have$species_group, median)
+
+have_final_mult <- filter(have, plan_status %in% c("Final", "Final Revision 1", "Final Revision 2"))
+tapply(have_final_mult$elapsed, have_final_mult$multispp, median)
 ```
 
 # Figures
