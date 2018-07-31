@@ -367,18 +367,18 @@ n_list_df <- data_frame(year, n_listed, n_official, n_unofficial)
 n_list_df$n_no_plan <- with(n_list_df, n_listed - n_official - n_unofficial)
 
 plt <- ggplot(n_list_df, aes(y = n_listed, x = year)) +
-  geom_line() +
+  geom_line(size = 1) +
   geom_line(aes(y = n_no_plan, x = year),
-            colour = "red",
+            colour = "orange",
             size = 1) +
   geom_line(aes(y = n_official, x = year), 
-            colour = "gray70",
+            colour = "blue",
             linetype = "dashed") +
   geom_line(aes(y = n_unofficial, x = year), 
-            colour = "gray70",
+            colour = "#998ec3",
             linetype = "dotted") +
   labs(x = "", y = "Count") +
-  theme_hc() + 
+  theme_hc(base_size = 18) + 
   theme(text = element_text(family = "Arial"))
 ggplotly(plt)
 
@@ -548,11 +548,12 @@ hist(resid(mod))
 ```{r figure_5a, message = FALSE}
 official$plan_age <- as.numeric(as.Date("2018-01-08") - official$date) / 365
 skimr::skim(official$plan_age)
-plt <- qplot(official$plan_age, geom = "histogram") +
+plt <- ggplot(official, aes(x = plan_age)) +
+  geom_histogram(color = "white", bins = 40) +
   labs(x = "Plan age (years)",
        y = "Number of species") +
-  theme_hc() +
-  theme(plot.title=element_text(hjust = 0, size = 18),
+  theme_hc(base_size = 18) +
+  theme(plot.title=element_text(hjust = 0, size = 20),
         text = element_text(family = "Arial"))
 plt
 
